@@ -1,0 +1,1 @@
+This code is responsible for servo control. It is designed to work with ST3215 and ST3025 bus servos.

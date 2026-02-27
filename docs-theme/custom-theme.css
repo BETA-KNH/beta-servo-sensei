@@ -1,0 +1,124 @@
+/* servo_sensei custom theme — applied on top of doxygen-awesome.css */
+
+html {
+    /* User palette */
+    --bg-outer:       #808080;
+    --bg-color:       #c0c0c0;
+    --bg-secondary:   #a0a0a0;
+    --text-color:     #6a6ab9;
+    --text-dim:       #000050;
+    --accent-color:   #800000;
+    --highlight:      #008000;
+    --error-color:    #ff0000;
+    --border-color:   #000080;
+
+    /* Map onto doxygen-awesome variables */
+    --primary-color:                    var(--accent-color);
+    --primary-dark-color:               var(--text-dim);
+    --primary-light-color:              var(--highlight);
+    --on-primary-color:                 var(--bg-color);       /* text ON primary-colored elements */
+    --page-background-color:            var(--bg-color);
+    --page-foreground-color:            var(--text-color);
+    --page-secondary-foreground-color:  var(--text-dim);
+    --separator-color:                  var(--border-color);
+    --side-nav-background:              var(--bg-secondary);
+    --side-nav-foreground:              var(--text-color);
+    --fragment-background:              var(--bg-secondary);
+    --fragment-linenumber-color:        var(--text-dim);
+    --fragment-linenumber-background:   var(--bg-outer);
+    --searchbar-background:             var(--bg-secondary);
+    --searchbar-foreground:             var(--text-color);
+    --code-background:                  var(--bg-secondary);
+    --code-foreground:                  var(--text-color);
+    --header-background:                var(--bg-secondary);
+    --header-foreground:                var(--text-color);
+    --tablehead-background:             var(--bg-secondary);
+    --tablehead-foreground:             var(--text-color);
+    --blockquote-background:            var(--bg-secondary);
+    --toc-background:                   var(--bg-secondary);
+    --toc-foreground:                   var(--text-color);
+    --menu-selected-background:         rgba(0,0,0,.15);
+    --odd-color:                        rgba(0,0,0,.06);
+    --webkit-scrollbar-color:           var(--border-color);
+    /* note / warning / todo / bug boxes — tint bg-secondary with accent hues */
+    --note-color:                       #b0b8c8;
+    --note-color-dark:                  var(--text-dim);
+    --note-color-darker:                var(--text-dim);
+    --warning-color:                    #c8b8b0;
+    --warning-color-dark:               var(--accent-color);
+    --warning-color-darker:             var(--text-dim);
+    --todo-color:                       #b0b8b0;
+    --todo-color-dark:                  var(--highlight);
+    --todo-color-darker:                var(--text-dim);
+    --deprecated-color:                 var(--bg-secondary);
+    --deprecated-color-dark:            var(--text-dim);
+    --deprecated-color-darker:          var(--text-dim);
+    --bug-color:                        #c8b0b0;
+    --bug-color-dark:                   var(--accent-color);
+    --bug-color-darker:                 var(--text-dim);
+    --invariant-color:                  #b0c8b8;
+    --invariant-color-dark:             var(--highlight);
+    --invariant-color-darker:           var(--text-dim);
+}
+
+/* Outer page background */
+body {
+    background-color: var(--bg-outer);
+}
+
+/* Error / warning colouring */
+.warning, .attention {
+    border-left: 4px solid var(--error-color);
+    color: var(--error-color);
+}
+
+/* -------------------------------------------------------------------------
+ * Override hardcoded colors in doxygen.css that bypass CSS variables
+ * ------------------------------------------------------------------------- */
+
+/* All links */
+a,
+a:visited,
+a:hover,
+a:focus,
+a:active,
+a.el,
+a.el:visited,
+a.code,
+a.code:visited,
+a.line,
+a.line:visited,
+a.codeRef,
+a.codeRef:visited,
+a.lineRef,
+a.lineRef:visited,
+.navpath li.navelem a,
+#powerTip a {
+    color: var(--text-color) !important;
+}
+
+/* Line number links in source view */
+span.lineno a,
+span.lineno a:visited,
+span.lineno a:hover {
+    color: var(--text-dim) !important;
+}
+
+/* Template parameter text */
+.compoundTemplParams,
+.memTemplParams,
+.memtemplate,
+dl.citelist dt,
+div.toc h3 {
+    color: var(--text-dim) !important;
+}
+
+/* Fold/expand toggle button border */
+.arrow,
+span.fold,
+span.foldopen,
+span.foldclose {
+    border-color: var(--border-color) !important;
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-color) !important;
+}
