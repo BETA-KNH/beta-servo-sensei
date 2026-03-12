@@ -8,12 +8,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ---------------------------------------------------------------------------
 # Main application
 # ---------------------------------------------------------------------------
-add_executable(servo_app app/main.cpp)
-target_include_directories(servo_app PRIVATE include)
-
-add_executable(servo_controller app/servo_controller.cpp)
-target_include_directories(servo_controller PRIVATE include)
-
 add_executable(scan_servos app/scan_servos.cpp)
 target_include_directories(scan_servos PRIVATE include)
 
@@ -68,7 +62,7 @@ endif() # BUILD_TESTING
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 
-install(TARGETS scan_servos servo_cli servo_controller
+install(TARGETS scan_servos servo_cli
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 

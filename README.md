@@ -36,8 +36,6 @@ cmake --build build
 ```
 
 This builds:
-- `servo_app` - Main servo control application
-- `servo_controller` - Servo controller utility
 - `scan_servos` - Scan and detect servos on the bus
 - `servo_cli` - Command-line interface for servo control
 - `servo_tests` - Unit tests (no hardware required)
