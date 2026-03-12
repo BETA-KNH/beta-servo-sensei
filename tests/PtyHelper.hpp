@@ -105,15 +105,21 @@ public:
         return true;
     }
 
-    // Read up to `n` bytes from the master end — these are bytes the slave
-    // (SerialPortDriver) wrote, i.e. the outgoing command packet.
+    // Read exactly `n` bytes from the master end — these are bytes the slave
+    // (SerialPortDriver) wrote, i.e. the outgoing command packet.  Loops
+    // until all n bytes are available (handles cases where the writer issues
+    // multiple small write() calls that arrive in separate kernel buffers).
     std::vector<uint8_t> masterRead(std::size_t n) const
     {
         if (!isOpen() || n == 0) return {};
-        std::vector<uint8_t> buf(n);
-        ssize_t got = ::read(masterFd_, buf.data(), n);
-        if (got <= 0) return {};
-        buf.resize(static_cast<std::size_t>(got));
+        std::vector<uint8_t> buf;
+        buf.reserve(n);
+        std::vector<uint8_t> tmp(n);
+        while (buf.size() < n) {
+            ssize_t got = ::read(masterFd_, tmp.data(), n - buf.size());
+            if (got <= 0) break;
+            buf.insert(buf.end(), tmp.begin(), tmp.begin() + got);
+        }
         return buf;
     }
 

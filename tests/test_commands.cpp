@@ -77,7 +77,7 @@ TEST(Read, SyncReadContainsAllIds)
 // ---------------------------------------------------------------------------
 TEST(Write, SingleIdUsesWriteInstruction)
 {
-    auto pkt = STServoRequest::write(0x01, STServo::Register::TARGET_LOCATION,
+    auto pkt = STServoRequest::write(STServo::Register::TARGET_LOCATION, 0x01,
                                        {0x00, 0x08});
     EXPECT_EQ(pkt[4], static_cast<uint8_t>(STServo::Instruction::WRITE));
     assertValidPacket(pkt);
@@ -86,7 +86,7 @@ TEST(Write, SingleIdUsesWriteInstruction)
 TEST(Write, SingleIdKnownBytes)
 {
     // FF FF 01 05 03 2A 00 08 C4
-    EXPECT_EQ(STServoRequest::write(0x01, STServo::Register::TARGET_LOCATION,
+    EXPECT_EQ(STServoRequest::write(STServo::Register::TARGET_LOCATION, 0x01,
                                       {0x00, 0x08}),
         (std::vector<uint8_t>{0xFF, 0xFF, 0x01, 0x05, 0x03, 0x2A, 0x00, 0x08, 0xC4}));
 }
@@ -134,7 +134,7 @@ TEST(RegWrite, UsesRegWriteInstruction)
 
 TEST(RegWrite, DiffersFromWriteOnlyInInstructionByte)
 {
-    auto w  = STServoRequest::write   (0x01, STServo::Register::TARGET_LOCATION, {0x00, 0x08});
+    auto w  = STServoRequest::write   (STServo::Register::TARGET_LOCATION, 0x01, {0x00, 0x08});
     auto rw = STServoRequest::regWrite(0x01, STServo::Register::TARGET_LOCATION, {0x00, 0x08});
     ASSERT_EQ(w.size(), rw.size());
     for (std::size_t i = 0; i < w.size(); ++i) {
@@ -201,7 +201,7 @@ TEST(Write, MoveGoldenBytes)
         0x00, 0x00,  // time 0
         0x00, 0x00,  // speed 0
     };
-    auto pkt = STServoRequest::write(0x02, STServo::Register::TARGET_LOCATION, combined);
+    auto pkt = STServoRequest::write(STServo::Register::TARGET_LOCATION, 0x02, combined);
     EXPECT_EQ(pkt, (std::vector<uint8_t>{
         0xFF, 0xFF, 0x02, 0x09, 0x03, 0x2A,
         0xE8, 0x03, 0x00, 0x00, 0x00, 0x00,

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <fcntl.h>
+#include <poll.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -17,7 +18,7 @@
  * @brief RAII wrapper around a POSIX termios serial port file descriptor.
  *
  * Configured for 8N1 raw mode with a blocking read timeout supplied at
- * construction time. Designed for half-duplex RS-485 / UART bus servo
+ * construction time. Designed for half-duplex single-wire UART bus servo
  * communication (e.g. ST3215, ST3025 at up to 1 Mbps).
  *
  * Non-copyable, move-only.
@@ -38,7 +39,7 @@ public:
     /// @brief Construct from a @ref STServo::SerialPortConfig.
     /// @param cfg  Port, baud rate, and timeout configuration.
     explicit SerialPortDriver(const STServo::SerialPortConfig& cfg)
-        : fd_(-1), port_(cfg.port)
+        : fd_(-1), port_(cfg.port), timeoutMs_(cfg.timeoutMs)
     {
         open(cfg.port, cfg.baud, cfg.timeoutMs);
     }
@@ -48,7 +49,7 @@ public:
     /// @param baud       Baud rate in bits per second.
     /// @param timeoutMs  Read timeout in milliseconds.
     SerialPortDriver(const std::string& port, int baud, int timeoutMs)
-        : fd_(-1), port_(port)
+        : fd_(-1), port_(port), timeoutMs_(timeoutMs)
     {
         open(port, baud, timeoutMs);
     }
@@ -65,7 +66,7 @@ public:
 
     // Movable
     SerialPortDriver(SerialPortDriver&& other) noexcept
-        : fd_(other.fd_), port_(std::move(other.port_))
+        : fd_(other.fd_), port_(std::move(other.port_)), timeoutMs_(other.timeoutMs_)
     {
         other.fd_ = -1;
     }
@@ -74,9 +75,10 @@ public:
     {
         if (this != &other) {
             if (fd_ >= 0) ::close(fd_);
-            fd_       = other.fd_;
-            port_     = std::move(other.port_);
-            other.fd_ = -1;
+            fd_         = other.fd_;
+            port_       = std::move(other.port_);
+            timeoutMs_  = other.timeoutMs_;
+            other.fd_   = -1;
         }
         return *this;
     }
@@ -111,7 +113,11 @@ public:
 
     /// @brief Read up to @p expectedBytes bytes from the serial port.
     ///
-    /// Blocks until bytes arrive or the configured timeout elapses.
+    /// Blocks until all bytes arrive or the configured timeout elapses.
+    /// Uses poll(2) for the wait so the timeout is reliable on both real
+    /// serial ports and PTY pairs (VTIME on a PTY is not guaranteed by
+    /// the kernel tty line discipline on all configurations).
+    ///
     /// @param expectedBytes  Maximum number of bytes to read.
     /// @return               Bytes received (may be fewer than requested on timeout).
     std::vector<uint8_t> read(std::size_t expectedBytes) const
@@ -123,14 +129,24 @@ public:
         std::size_t received = 0;
 
         while (received < expectedBytes) {
+            // Wait for data with an explicit timeout via poll()
+            struct pollfd pfd{fd_, POLLIN, 0};
+            int r = ::poll(&pfd, 1, timeoutMs_);
+            if (r < 0) {
+                if (errno == EINTR) continue;  // signal — retry
+                break;
+            }
+            if (r == 0) break;  // timeout expired
+            if (!(pfd.revents & POLLIN)) break;  // unexpected event
+
             ssize_t n = ::read(fd_,
-                                buf.data() + received,
-                                expectedBytes - received);
+                               buf.data() + received,
+                               expectedBytes - received);
             if (n < 0) {
                 if (errno == EINTR) continue;  // interrupted — retry
                 break;
             }
-            if (n == 0) break;  // timeout expired (VMIN=0, VTIME=N)
+            if (n == 0) break;
             received += static_cast<std::size_t>(n);
         }
 
@@ -141,6 +157,7 @@ public:
 private:
     int         fd_;
     std::string port_;
+    int         timeoutMs_ = 50;
 
     // ------------------------------------------------------------------
     // Internal setup
@@ -213,12 +230,10 @@ private:
         ::cfsetispeed(&tty, speed);
         ::cfsetospeed(&tty, speed);
 
-        // Blocking read with timeout:
-        //   VMIN=0  — return as soon as any data arrives or timeout expires
-        //   VTIME   — timeout in tenths of a second (minimum 1 = 100 ms)
+        // Non-blocking reads — poll() in read() provides the timeout.
+        // VMIN=0, VTIME=0: read() returns immediately with whatever is buffered.
         tty.c_cc[VMIN]  = 0;
-        tty.c_cc[VTIME] = static_cast<cc_t>(
-            std::max(1, (timeoutMs + 99) / 100));  // round up to nearest 100 ms
+        tty.c_cc[VTIME] = 0;
 
         if (::tcsetattr(fd_, TCSANOW, &tty) != 0) {
             ::close(fd_);

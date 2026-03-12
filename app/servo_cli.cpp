@@ -42,9 +42,9 @@
 static const std::map<std::string, const STServo::Reg*> REGISTER_MAP = {
     // identity / comms
     { "firmware_major_ver",    &STServo::Register::FIRMWARE_MAJOR_VER  },
-    { "firmware_sub_ver",      &STServo::Register::FIRMWARE_SUB_VER    },
-    { "servo_main_ver",        &STServo::Register::SERVO_MAIN_VER      },
-    { "servo_sub_ver",         &STServo::Register::SERVO_SUB_VER       },
+    { "firmware_minor_ver",    &STServo::Register::FIRMWARE_MINOR_VER  },
+    { "servo_major_ver",        &STServo::Register::SERVO_MAJOR_VER      },
+    { "servo_minor_ver",        &STServo::Register::SERVO_MINOR_VER      },
     { "id",                    &STServo::Register::ID                   },
     { "baud_rate",             &STServo::Register::BAUD_RATE            },
     { "return_delay",          &STServo::Register::RETURN_DELAY         },
@@ -73,7 +73,7 @@ static const std::map<std::string, const STServo::Reg*> REGISTER_MAP = {
     { "position_correction",   &STServo::Register::POSITION_CORRECTION  },
     // operational mode / overload
     { "operation_mode",        &STServo::Register::OPERATION_MODE       },
-    { "protective_torque",     &STServo::Register::PROTECTIVE_TORQUE    },
+    { "protection_torque",     &STServo::Register::PROTECTION_TORQUE    },
     { "protection_time",       &STServo::Register::PROTECTION_TIME      },
     { "overload_torque",       &STServo::Register::OVERLOAD_TORQUE      },
     { "speed_p_coeff",         &STServo::Register::SPEED_P_COEFF        },
@@ -83,10 +83,10 @@ static const std::map<std::string, const STServo::Reg*> REGISTER_MAP = {
     { "torque_switch",         &STServo::Register::TORQUE_SWITCH        },
     { "acceleration",          &STServo::Register::ACCELERATION         },
     { "target_location",       &STServo::Register::TARGET_LOCATION      },
-    { "running_time",          &STServo::Register::RUNNING_TIME         },
+    { "operation_time",         &STServo::Register::OPERATION_TIME       },
     { "operation_speed",       &STServo::Register::OPERATION_SPEED      },
     { "torque_limit",          &STServo::Register::TORQUE_LIMIT         },
-    { "lock_mark",             &STServo::Register::LOCK_MARK            },
+    { "lock_flag",              &STServo::Register::LOCK_FLAG            },
     // SRAM — status (read-only)
     { "current_location",      &STServo::Register::CURRENT_LOCATION     },
     { "current_speed",         &STServo::Register::CURRENT_SPEED        },
@@ -95,7 +95,7 @@ static const std::map<std::string, const STServo::Reg*> REGISTER_MAP = {
     { "current_temperature",   &STServo::Register::CURRENT_TEMPERATURE  },
     { "async_write_flag",      &STServo::Register::ASYNC_WRITE_FLAG     },
     { "servo_status",          &STServo::Register::SERVO_STATUS         },
-    { "mobile_sign",           &STServo::Register::MOBILE_SIGN          },
+    { "move_flag",              &STServo::Register::MOVE_FLAG            },
     { "current_current",       &STServo::Register::CURRENT_CURRENT      },
 };
 
@@ -125,14 +125,14 @@ static void printUsage(const char* prog)
         "                    p_coeff d_coeff i_coeff min_startup_force\n"
         "                    cw_deadzone ccw_deadzone protection_current\n"
         "                    angular_resolution position_correction\n"
-        "                    operation_mode protective_torque protection_time\n"
+        "                    operation_mode protection_torque protection_time\n"
         "                    overload_torque speed_p_coeff overcurrent_time velocity_i_coeff\n"
-        "Registers (read-only): firmware_major_ver firmware_sub_ver servo_main_ver servo_sub_ver\n"
-        "Registers (SRAM rw): torque_switch acceleration target_location running_time\n"
-        "                     operation_speed torque_limit lock_mark\n"
+        "Registers (read-only): firmware_major_ver firmware_minor_ver servo_major_ver servo_minor_ver\n"
+        "Registers (SRAM rw): torque_switch acceleration target_location operation_time\n"
+        "                     operation_speed torque_limit lock_flag\n"
         "Registers (SRAM ro): current_location current_speed current_load\n"
         "                     current_voltage current_temperature async_write_flag\n"
-        "                     servo_status mobile_sign current_current\n"
+        "                     servo_status move_flag current_current\n"
         "\n"
         "Env vars:  SERVO_PORT (required)  SERVO_BAUD (required)  SERVO_TIMEOUT_MS (optional, default 100)\n"
         "           Set in your shell or place them in conf/servo.env (auto-loaded).\n",
@@ -242,7 +242,7 @@ static int cmdWrite(SerialPortDriver& port, uint8_t id,
     }
 
     bool ok = sendAndReceive(port,
-                             STServoRequest::write(id, reg, encodeLE(value, reg.size)),
+                             STServoRequest::write(reg, id, encodeLE(value, reg.size)),
                              6);
     if (ok) std::printf("Wrote %u to %s on servo %d.\n", value, regName.c_str(), id);
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -264,7 +264,7 @@ static int cmdMove(SerialPortDriver& port, uint8_t id,
     combined.insert(combined.end(), sdata.begin(), sdata.end());
 
     bool ok = sendAndReceive(port,
-                             STServoRequest::write(id, STServo::Register::TARGET_LOCATION,
+                             STServoRequest::write(STServo::Register::TARGET_LOCATION, id,
                                                      combined),
                              6);
     if (ok) {

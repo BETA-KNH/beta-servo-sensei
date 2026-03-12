@@ -1,6 +1,7 @@
 #ifndef ST_SERVO_REQUEST_HPP
 #define ST_SERVO_REQUEST_HPP
 
+#include <algorithm>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -20,7 +21,7 @@
  * Overloaded pairs:
  *   - read(uint8_t, const STServo::Reg&)                          → READ       (0x02)
  *   - read(const std::vector<uint8_t>&, const STServo::Reg&)      → SYNC_READ  (0x82)
- *   - write(uint8_t, const STServo::Reg&, const std::vector&)     → WRITE      (0x03)
+ *   - write(const STServo::Reg&, uint8_t, const std::vector&)     → WRITE      (0x03)
  *   - write(const STServo::Reg&, const std::vector of pairs)      → SYNC_WRITE (0x83)
  */
 
@@ -63,11 +64,11 @@ public:
     }
 
     /// @brief Build a WRITE packet — write a register on a single servo immediately.
-    /// @param id    Target servo ID.
     /// @param reg   Register to write (address and expected size).
+    /// @param id    Target servo ID.
     /// @param data  Bytes to write; length should equal `reg.size`.
     /// @return      Packet bytes.
-    static std::vector<uint8_t> write(uint8_t id, const STServo::Reg& reg,
+    static std::vector<uint8_t> write(const STServo::Reg& reg, uint8_t id,
                                       const std::vector<uint8_t>& data)
     {
         std::vector<uint8_t> params;
@@ -87,13 +88,18 @@ public:
     write(const STServo::Reg& reg,
           const std::vector<std::pair<uint8_t, std::vector<uint8_t>>>& targets)
     {
-        std::vector<uint8_t> params;
-        params.reserve(2 + targets.size() * (1 + reg.size));
-        params.push_back(reg.address);
-        params.push_back(reg.size);            // data length per servo
+        std::size_t totalSize = 2;
+        for (const auto& [servo_id, data] : targets)
+            totalSize += 1 + data.size();
+
+        std::vector<uint8_t> params(totalSize);
+        std::size_t offset = 0;
+        params[offset++] = reg.address;
+        params[offset++] = reg.size;            // data length per servo
         for (const auto& [servo_id, data] : targets) {
-            params.push_back(servo_id);
-            params.insert(params.end(), data.begin(), data.end());
+            params[offset++] = servo_id;
+            std::copy(data.begin(), data.end(), params.begin() + static_cast<std::ptrdiff_t>(offset));
+            offset += data.size();
         }
         return buildPacket(STServo::BROADCAST_ID,
                            STServo::Instruction::SYNC_WRITE, params);

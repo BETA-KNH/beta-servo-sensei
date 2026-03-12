@@ -102,7 +102,7 @@ int main()
     std::printf("\n--- SYNC_WRITE (swapping positions: ID1→%u, ID3→%u) ---\n",
                 pos3, pos1);
 
-    // Write 6-byte move payload: TARGET_LOCATION(2) + RUNNING_TIME(2) + OPERATION_SPEED(2)
+    // Write 6-byte move payload: TARGET_LOCATION(2) + OPERATION_TIME(2) + OPERATION_SPEED(2)
     // The SYNC_WRITE reg must span all 6 bytes starting at TARGET_LOCATION.
     // We construct a synthetic Reg covering the 6-byte motion block.
     const STServo::Reg moveReg = {
