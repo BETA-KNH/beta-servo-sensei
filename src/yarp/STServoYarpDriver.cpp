@@ -89,6 +89,8 @@ bool STServoYarpDriver::open(yarp::os::Searchable& config)
     controlModes_     .assign(nJoints_, VOCAB_CM_POSITION);
     encoderOffsets_    .assign(nJoints_, 0.0);
     pidEnabled_       .assign(nJoints_, true);
+    refPositions_     .assign(nJoints_, 0.0);
+    interactionModes_ .assign(nJoints_, yarp::dev::VOCAB_IM_STIFF);
     prevSpeedDegS_    .assign(nJoints_, 0.0);
     prevSpeedTime_    .assign(nJoints_, yarp::os::Time::now());
 
@@ -351,6 +353,7 @@ bool STServoYarpDriver::positionMove(int j, double ref)
     }
     
     double target = ref - encoderOffsets_[j];
+    refPositions_[j] = ref;
     return doMoveOne(j, degToSteps(target), degSToStepS(refSpeeds_[j]));
 }
 
@@ -373,6 +376,7 @@ bool STServoYarpDriver::positionMove(const double* refs)
         idxs[j]   = j;
         steps[j]  = degToSteps(refs[j] - encoderOffsets_[j]);
         speeds[j] = degSToStepS(refSpeeds_[j]);
+        refPositions_[j] = refs[j];
     }
     return doSyncMove(idxs, steps, speeds);
 }
@@ -399,6 +403,7 @@ bool STServoYarpDriver::positionMove(int n_joint, const int* joints,
         idxs[i]   = joints[i];
         steps[i]  = degToSteps(refs[i] - encoderOffsets_[joints[i]]);
         speeds[i] = degSToStepS(refSpeeds_[joints[i]]);
+        refPositions_[joints[i]] = refs[i];
     }
     return doSyncMove(idxs, steps, speeds);
 }
@@ -1327,5 +1332,126 @@ bool STServoYarpDriver::isPidEnabled(const yarp::dev::PidControlTypeEnum& /*pidt
 {
     if (!validJoint(j) || !enabled) return false;
     *enabled = pidEnabled_[j];
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// IInteractionMode  — ST servos are always stiff; set is a no-op
+// ---------------------------------------------------------------------------
+
+bool STServoYarpDriver::getInteractionMode(int axis,
+                                            yarp::dev::InteractionModeEnum* mode)
+{
+    if (!validJoint(axis) || !mode) return false;
+    *mode = yarp::dev::VOCAB_IM_STIFF;
+    return true;
+}
+
+bool STServoYarpDriver::getInteractionModes(int n_joints, int* joints,
+                                             yarp::dev::InteractionModeEnum* modes)
+{
+    if (!joints || !modes) return false;
+    for (int i = 0; i < n_joints; ++i) {
+        if (!validJoint(joints[i])) return false;
+        modes[i] = yarp::dev::VOCAB_IM_STIFF;
+    }
+    return true;
+}
+
+bool STServoYarpDriver::getInteractionModes(yarp::dev::InteractionModeEnum* modes)
+{
+    if (!modes) return false;
+    for (int j = 0; j < nJoints_; ++j) {
+        modes[j] = yarp::dev::VOCAB_IM_STIFF;
+    }
+    return true;
+}
+
+bool STServoYarpDriver::setInteractionMode(int axis,
+                                            yarp::dev::InteractionModeEnum mode)
+{
+    if (!validJoint(axis)) return false;
+    if (mode != yarp::dev::VOCAB_IM_STIFF) {
+        yCWarning(STSERVO) << "setInteractionMode: only STIFF is supported; ignoring";
+    }
+    return true;
+}
+
+bool STServoYarpDriver::setInteractionModes(int n_joints, int* joints,
+                                             yarp::dev::InteractionModeEnum* modes)
+{
+    if (!joints || !modes) return false;
+    for (int i = 0; i < n_joints; ++i) {
+        if (!setInteractionMode(joints[i], modes[i])) return false;
+    }
+    return true;
+}
+
+bool STServoYarpDriver::setInteractionModes(yarp::dev::InteractionModeEnum* modes)
+{
+    if (!modes) return false;
+    for (int j = 0; j < nJoints_; ++j) {
+        if (modes[j] != yarp::dev::VOCAB_IM_STIFF) {
+            yCWarning(STSERVO) << "setInteractionModes: only STIFF is supported; ignoring joint" << j;
+        }
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// IPositionControl — getTargetPosition* (returns last commanded position)
+// ---------------------------------------------------------------------------
+
+bool STServoYarpDriver::getTargetPosition(const int joint, double* ref)
+{
+    if (!validJoint(joint) || !ref) return false;
+    *ref = refPositions_[joint];
+    return true;
+}
+
+bool STServoYarpDriver::getTargetPositions(double* refs)
+{
+    if (!refs) return false;
+    std::copy(refPositions_.begin(), refPositions_.end(), refs);
+    return true;
+}
+
+bool STServoYarpDriver::getTargetPositions(const int n_joint, const int* joints,
+                                            double* refs)
+{
+    if (!joints || !refs) return false;
+    for (int i = 0; i < n_joint; ++i) {
+        if (!validJoint(joints[i])) return false;
+        refs[i] = refPositions_[joints[i]];
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// IVelocityControl — getRefVelocity* (returns last commanded speed)
+// ---------------------------------------------------------------------------
+
+bool STServoYarpDriver::getRefVelocity(const int joint, double* vel)
+{
+    if (!validJoint(joint) || !vel) return false;
+    *vel = refSpeeds_[joint];
+    return true;
+}
+
+bool STServoYarpDriver::getRefVelocities(double* vels)
+{
+    if (!vels) return false;
+    std::copy(refSpeeds_.begin(), refSpeeds_.end(), vels);
+    return true;
+}
+
+bool STServoYarpDriver::getRefVelocities(const int n_joint, const int* joints,
+                                          double* vels)
+{
+    if (!joints || !vels) return false;
+    for (int i = 0; i < n_joint; ++i) {
+        if (!validJoint(joints[i])) return false;
+        vels[i] = refSpeeds_[joints[i]];
+    }
     return true;
 }

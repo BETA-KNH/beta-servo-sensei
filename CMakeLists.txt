@@ -138,9 +138,29 @@ if(NOT SKIP_st_servo)
     # Usage:  ./fake_servo_bus --ids "1 2 3" --name /robot/debug_servo
     # -----------------------------------------------------------------------
     if(UNIX AND NOT APPLE)
-        add_executable(fake_servo_bus app/fake_servo_bus.cpp)
-        target_include_directories(fake_servo_bus PRIVATE tests)  # PtyHelper.hpp
+        add_executable(fake_servo_bus
+            app/fake_servo_bus/main.cpp
+            app/fake_servo_bus/common.cpp
+            app/fake_servo_bus/config.cpp
+            app/fake_servo_bus/sim_bus.cpp
+            app/fake_servo_bus/ui.cpp
+        )
+        target_include_directories(fake_servo_bus PRIVATE
+            tests
+            app/fake_servo_bus
+        )
         target_compile_features(fake_servo_bus PRIVATE cxx_std_17)
+
+        # Optional ncurses TUI — live servo-state table in the terminal
+        find_package(Curses)
+        if(CURSES_FOUND)
+            target_link_libraries(fake_servo_bus PRIVATE ${CURSES_LIBRARIES})
+            target_include_directories(fake_servo_bus PRIVATE ${CURSES_INCLUDE_DIRS})
+            target_compile_definitions(fake_servo_bus PRIVATE HAVE_CURSES=1)
+            message(STATUS "fake_servo_bus: ncurses TUI enabled")
+        else()
+            message(STATUS "fake_servo_bus: ncurses not found — text-mode only")
+        endif()
     endif()
 endif() # NOT SKIP_st_servo
 
@@ -162,6 +182,21 @@ if(BUILD_TESTING AND BUILD_YARP_TESTS AND NOT SKIP_st_servo)
     )
     target_compile_features(test_yarp_driver PRIVATE cxx_std_17)
     gtest_discover_tests(test_yarp_driver)
+
+    if(UNIX AND NOT APPLE)
+        add_executable(test_fake_servo_bus
+            tests/test_fake_servo_bus.cpp
+        )
+        target_include_directories(test_fake_servo_bus PRIVATE include)
+        target_link_libraries(test_fake_servo_bus PRIVATE
+            GTest::gtest_main
+        )
+        target_compile_features(test_fake_servo_bus PRIVATE cxx_std_17)
+        target_compile_definitions(test_fake_servo_bus PRIVATE
+            FAKE_SERVO_BUS_PATH="$<TARGET_FILE:fake_servo_bus>"
+        )
+        gtest_discover_tests(test_fake_servo_bus)
+    endif()
 endif()
 
 endif() # YARP_FOUND

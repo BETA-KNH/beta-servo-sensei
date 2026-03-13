@@ -55,6 +55,7 @@
 
 #include <yarp/dev/DeviceDriver.h>
 #include <yarp/dev/ControlBoardInterfaces.h>
+#include <yarp/dev/IInteractionMode.h>
 #include <yarp/os/Log.h>
 #include <yarp/os/LogStream.h>
 #include <yarp/os/Time.h>
@@ -77,6 +78,7 @@ class STServoYarpDriver
     , public yarp::dev::IControlMode
     , public yarp::dev::IAmplifierControl
     , public yarp::dev::IPidControl
+    , public yarp::dev::IInteractionMode
 {
 public:
     STServoYarpDriver()          = default;
@@ -193,6 +195,32 @@ public:
     bool setControlModes(int* modes) override;
 
     // -----------------------------------------------------------------------
+    // IInteractionMode  (all servo joints are stiff-only; set is a no-op)
+    // -----------------------------------------------------------------------
+    bool getInteractionMode(int axis, yarp::dev::InteractionModeEnum* mode) override;
+    bool getInteractionModes(int n_joints, int* joints,
+                             yarp::dev::InteractionModeEnum* modes) override;
+    bool getInteractionModes(yarp::dev::InteractionModeEnum* modes) override;
+    bool setInteractionMode(int axis, yarp::dev::InteractionModeEnum mode) override;
+    bool setInteractionModes(int n_joints, int* joints,
+                             yarp::dev::InteractionModeEnum* modes) override;
+    bool setInteractionModes(yarp::dev::InteractionModeEnum* modes) override;
+
+    // -----------------------------------------------------------------------
+    // IPositionControl — extra overrides for yarpmotorgui
+    // -----------------------------------------------------------------------
+    bool getTargetPosition(const int joint, double* ref) override;
+    bool getTargetPositions(double* refs) override;
+    bool getTargetPositions(const int n_joint, const int* joints, double* refs) override;
+
+    // -----------------------------------------------------------------------
+    // IVelocityControl — extra overrides for yarpmotorgui
+    // -----------------------------------------------------------------------
+    bool getRefVelocity(const int joint, double* vel) override;
+    bool getRefVelocities(double* vels) override;
+    bool getRefVelocities(const int n_joint, const int* joints, double* vels) override;
+
+    // -----------------------------------------------------------------------
     // IAmplifierControl
     // -----------------------------------------------------------------------
     bool enableAmp(int j) override;
@@ -265,6 +293,8 @@ private:
     std::vector<int>    controlModes_;      ///< Current YARP VOCAB_CM_* per joint.
     std::vector<double> encoderOffsets_;    ///< Software zero offset in degrees.
     std::vector<bool>   pidEnabled_;        ///< PID enabled state per joint.
+    std::vector<double> refPositions_;      ///< Last commanded target position (deg) per joint.
+    std::vector<yarp::dev::InteractionModeEnum> interactionModes_; ///< Always VOCAB_IM_STIFF.
 
     // Velocity estimation (for getEncoderAcceleration)
     std::vector<double> prevSpeedDegS_;

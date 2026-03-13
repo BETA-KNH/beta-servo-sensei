@@ -159,8 +159,8 @@ protected:
         return static_cast<std::size_t>(5u + 1u + regSize + 1u);
     }
 
-    /// Move-packet size (6-byte composite TARGET_LOCATION→OPERATION_SPEED).
-    static constexpr std::size_t MOVE_PACKET_SIZE = 13u;  // 5(hdr)+1(addr)+6(data)+1(cksum)
+    /// Move-packet size (7-byte composite ACCELERATION→OPERATION_SPEED).
+    static constexpr std::size_t MOVE_PACKET_SIZE = 14u;  // 5(hdr)+1(addr)+7(data)+1(cksum)
 };
 
 // ===========================================================================
@@ -410,9 +410,11 @@ TEST_F(DriverTest, PositionMoveEncodesStepsCorrectly)
     int16_t  steps  = static_cast<int16_t>(std::round(DEG * STEPS_PER_DEG));
     uint16_t speed  = static_cast<uint16_t>(std::round(60.0 * STEPS_PER_DEG)); // default 60 deg/s
 
-    // Expected packet: WRITE of 6-byte composite register at 0x2A
-    static constexpr STServo::Reg REG_MOVE = {0x2A, 6, STServo::MemoryArea::SRAM, STServo::Access::RW};
+    // Expected packet: WRITE of 7-byte composite register at 0x29
+    // Payload: ACCELERATION(1) | TARGET_LOCATION(2) | OPERATION_TIME(2) | OPERATION_SPEED(2)
+    static constexpr STServo::Reg REG_MOVE = {0x29, 7, STServo::MemoryArea::SRAM, STServo::Access::RW};
     std::vector<uint8_t> payload = {
+        0x00,  // ACCELERATION = 0 (servo max, default refAcceleration)
         static_cast<uint8_t>(steps  & 0xFF),
         static_cast<uint8_t>((steps  >> 8) & 0xFF),
         0x00, 0x00,  // OPERATION_TIME always 0
@@ -435,11 +437,11 @@ TEST_F(DriverTest, PositionMoveUsesSetRefSpeed)
     auto pkt = pty_.masterRead(MOVE_PACKET_SIZE);
     ASSERT_EQ(pkt.size(), MOVE_PACKET_SIZE);
 
-    // Speed bytes are at offsets [9] and [10] in the move packet:
-    //  [FF FF id LEN INSTR 0x2A d0 d1 d2 d3 d4 d5 cksum]
-    //  0  1  2  3   4     5    6  7  8  9  10 11 12
-    //  d0..d1 = TARGET_LOCATION, d2..d3 = OPERATION_TIME=0, d4..d5 = OPERATION_SPEED
-    uint16_t speedInPkt = static_cast<uint16_t>(pkt[10] | (pkt[11] << 8));
+    // Speed bytes are at offsets [10] and [11] in the move packet:
+    //  [FF FF id LEN INSTR 0x29 acc d0 d1 d2 d3 d4 d5 cksum]
+    //  0  1  2  3   4     5    6   7  8  9  10 11 12 13
+    //  acc = ACCELERATION(1), d0..d1 = TARGET_LOCATION, d2..d3 = OPERATION_TIME=0, d4..d5 = OPERATION_SPEED
+    uint16_t speedInPkt = static_cast<uint16_t>(pkt[11] | (pkt[12] << 8));
     uint16_t expected   = static_cast<uint16_t>(std::round(120.0 * STEPS_PER_DEG));
     EXPECT_EQ(speedInPkt, expected);
 }
@@ -452,10 +454,10 @@ TEST_F(DriverTest, PositionMoveAllJointsSyncWrite)
     const double refs[2] = {45.0, 135.0};
     EXPECT_TRUE(drv_.positionMove(refs));
 
-    // SYNC_WRITE for 2 servos, 6-byte register:
-    // params = [addr(1) + size(1) + {id(1)+data(6)} × 2] = 2 + 14 = 16 bytes
-    // total  = 6 + 16 = 22 bytes:  [FF FF FE LEN 83 params CKSUM]
-    constexpr std::size_t SYNC_MOVE_2_SIZE = 22u;
+    // SYNC_WRITE for 2 servos, 7-byte register:
+    // params = [addr(1) + size(1) + {id(1)+data(7)} × 2] = 2 + 16 = 18 bytes
+    // total  = 6 + 18 = 24 bytes:  [FF FF FE LEN 83 params CKSUM]
+    constexpr std::size_t SYNC_MOVE_2_SIZE = 24u;
     auto pkt = pty_.masterRead(SYNC_MOVE_2_SIZE);
     ASSERT_EQ(pkt.size(), SYNC_MOVE_2_SIZE);
 
@@ -464,7 +466,7 @@ TEST_F(DriverTest, PositionMoveAllJointsSyncWrite)
     EXPECT_EQ(pkt[1], 0xFF);
     EXPECT_EQ(pkt[2], 0xFE);  // broadcast
     EXPECT_EQ(pkt[4], static_cast<uint8_t>(STServo::Instruction::SYNC_WRITE));
-    EXPECT_EQ(pkt[5], STServo::Register::TARGET_LOCATION.address);  // 0x2A
+    EXPECT_EQ(pkt[5], static_cast<uint8_t>(0x29));  // ACCELERATION register (start of 7-byte block)
 }
 
 TEST_F(DriverTest, PositionMoveInvalidJointReturnsFalse)
@@ -972,11 +974,99 @@ TEST_F(DriverTest, RelativeMoveAddsToCurrentPosition)
     auto movePkt = pty_.masterRead(MOVE_PACKET_SIZE);
     ASSERT_EQ(movePkt.size(), MOVE_PACKET_SIZE);
 
-    // Target position bytes [6],[7] in the move packet
-    int16_t targetSteps = static_cast<int16_t>(movePkt[6] | (movePkt[7] << 8));
+    // Target position bytes [7],[8] in the move packet (after acc byte at [6]):
+    //  [FF FF id LEN INSTR 0x29 acc tgt_lo tgt_hi time_lo time_hi spd_lo spd_hi cksum]
+    //  0  1  2  3   4     5    6   7      8      9      10     11     12     13
+    int16_t targetSteps = static_cast<int16_t>(movePkt[7] | (movePkt[8] << 8));
     double  targetDeg   = targetSteps * DEG_PER_STEP;
     double  expectedDeg = CURRENT_STEPS * DEG_PER_STEP + DELTA;
     EXPECT_NEAR(targetDeg, expectedDeg, 0.5);  // 0.5 deg rounding tolerance
+}
+
+// ===========================================================================
+// Interface coverage: IPositionControl/IVelocityControl/IInteractionMode
+// ===========================================================================
+
+TEST_F(DriverTest, GetTargetPositionReturnsLastCommandedReference)
+{
+    ASSERT_TRUE(openDriver({1}));
+    drainOpenPings({1});
+
+    constexpr double TARGET = 123.0;
+    ASSERT_TRUE(drv_.positionMove(0, TARGET));
+    drain(MOVE_PACKET_SIZE);
+
+    double ref = 0.0;
+    EXPECT_TRUE(drv_.getTargetPosition(0, &ref));
+    EXPECT_DOUBLE_EQ(ref, TARGET);
+}
+
+TEST_F(DriverTest, GetTargetPositionsAllJointsReturnsCachedTargets)
+{
+    ASSERT_TRUE(openDriver({1, 2}));
+    drainOpenPings({1, 2});
+
+    const double refsCmd[2] = {10.0, 20.0};
+    ASSERT_TRUE(drv_.positionMove(refsCmd));
+
+    // SYNC_WRITE for 2 servos with 7-byte register payload: total 24 bytes.
+    drain(24u);
+
+    double refsOut[2] = {-1.0, -1.0};
+    EXPECT_TRUE(drv_.getTargetPositions(refsOut));
+    EXPECT_DOUBLE_EQ(refsOut[0], refsCmd[0]);
+    EXPECT_DOUBLE_EQ(refsOut[1], refsCmd[1]);
+}
+
+TEST_F(DriverTest, GetRefVelocityMirrorsSetRefSpeed)
+{
+    ASSERT_TRUE(openDriver({1, 2}));
+
+    ASSERT_TRUE(drv_.setRefSpeed(0, 75.0));
+    ASSERT_TRUE(drv_.setRefSpeed(1, 33.0));
+
+    double v0 = 0.0;
+    double v1 = 0.0;
+    EXPECT_TRUE(drv_.getRefVelocity(0, &v0));
+    EXPECT_TRUE(drv_.getRefVelocity(1, &v1));
+    EXPECT_DOUBLE_EQ(v0, 75.0);
+    EXPECT_DOUBLE_EQ(v1, 33.0);
+
+    double all[2] = {0.0, 0.0};
+    EXPECT_TRUE(drv_.getRefVelocities(all));
+    EXPECT_DOUBLE_EQ(all[0], 75.0);
+    EXPECT_DOUBLE_EQ(all[1], 33.0);
+}
+
+TEST_F(DriverTest, InteractionModesAreAlwaysStiff)
+{
+    ASSERT_TRUE(openDriver({1, 2, 3}));
+
+    yarp::dev::InteractionModeEnum mode = yarp::dev::VOCAB_IM_UNKNOWN;
+    EXPECT_TRUE(drv_.getInteractionMode(1, &mode));
+    EXPECT_EQ(mode, yarp::dev::VOCAB_IM_STIFF);
+
+    yarp::dev::InteractionModeEnum modes[3] = {
+        yarp::dev::VOCAB_IM_UNKNOWN,
+        yarp::dev::VOCAB_IM_UNKNOWN,
+        yarp::dev::VOCAB_IM_UNKNOWN,
+    };
+    EXPECT_TRUE(drv_.getInteractionModes(modes));
+    EXPECT_EQ(modes[0], yarp::dev::VOCAB_IM_STIFF);
+    EXPECT_EQ(modes[1], yarp::dev::VOCAB_IM_STIFF);
+    EXPECT_EQ(modes[2], yarp::dev::VOCAB_IM_STIFF);
+}
+
+TEST_F(DriverTest, SetInteractionModeAcceptsOnlyStiffButReturnsTrue)
+{
+    ASSERT_TRUE(openDriver({1}));
+
+    // Driver is stiff-only; non-stiff requests are ignored but should not fail.
+    EXPECT_TRUE(drv_.setInteractionMode(0, yarp::dev::VOCAB_IM_COMPLIANT));
+
+    yarp::dev::InteractionModeEnum mode = yarp::dev::VOCAB_IM_UNKNOWN;
+    EXPECT_TRUE(drv_.getInteractionMode(0, &mode));
+    EXPECT_EQ(mode, yarp::dev::VOCAB_IM_STIFF);
 }
 
 // ===========================================================================
